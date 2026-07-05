@@ -1,3 +1,24 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-analytics.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAWenBcaaXd00FiDnyyjwf3FWFVGWYH_HI",
+  authDomain: "zasekiapp-648b7.firebaseapp.com",
+  projectId: "zasekiapp-648b7",
+  storageBucket: "zasekiapp-648b7.firebasestorage.app",
+  messagingSenderId: "182370319145",
+  appId: "1:182370319145:web:53afb7d1ba5360bb275538",
+  measurementId: "G-5QCY60B9B0"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+try { getAnalytics(firebaseApp); } catch (error) { console.info("Analytics unavailable", error); }
+const auth = getAuth(firebaseApp);
+const provider = new GoogleAuthProvider();
+const db = getFirestore(firebaseApp);
+
 const $ = (id) => document.getElementById(id);
 
 let state = {
@@ -14,66 +35,100 @@ let state = {
 
 let currentSeats = [];
 let draggedSeatIndex = null;
+let currentUser = null;
 
 function uid() {
   return "id_" + Math.random().toString(36).slice(2, 10);
 }
 
-let currentUser = null;
-
 function saveState() {
-  localStorage.setItem("laclass30State", JSON.stringify(state));
-
-  // Firebase連携後は、ログイン済みの場合だけFirestoreへ保存する想定です。
-  // 現在はGitHub Pages用のデモなので、Googleログイン風の動作だけ入れています。
-  if (currentUser) {
-    localStorage.setItem("laclass30CloudDemo", JSON.stringify({
-      uid: currentUser.uid,
-      email: currentUser.email,
-      savedAt: new Date().toISOString(),
-      state
-    }));
-  }
+  localStorage.setItem("laclass40LocalState", JSON.stringify(state));
 }
 
-function updateLoginUI() {
+
+function getUserDocRef() {
+  if (!currentUser) return null;
+  return doc(db, "users", currentUser.uid, "appData", "main");
+}
+
+async function saveToCloud() {
+  if (!currentUser) {
+    alert("クラウド保存にはGoogleログインが必要です。");
+    return false;
+  }
+  await setDoc(getUserDocRef(), {
+    state,
+    updatedAt: serverTimestamp(),
+    app: "LaClass"
+  }, { merge: true });
+  updateLoginUI("クラウド保存しました。");
+  return true;
+}
+
+async function loadFromCloud() {
+  if (!currentUser) return false;
+  const snap = await getDoc(getUserDocRef());
+  if (snap.exists() && snap.data().state) {
+    state = snap.data().state;
+    localStorage.setItem("laclass40LocalState", JSON.stringify(state));
+    state.classes = state.classes || [];
+    state.printSettings = state.printSettings || {
+      printMode: "posting",
+      orientation: "portrait",
+      showNumber: true,
+      showGender: true,
+      ngZone: "around"
+    };
+    if (!state.currentClassId && state.classes.length) state.currentClassId = state.classes[0].id;
+    currentSeats = currentClass().currentSeats || [];
+    renderAll();
+    updateLoginUI("クラウドから読み込みました。");
+    return true;
+  }
+  updateLoginUI("ログイン中です。まだクラウド保存データはありません。");
+  return false;
+}
+
+function updateLoginUI(message = "") {
   const notice = $("loginNotice");
   const loginBtn = $("loginBtn");
   const logoutBtn = $("logoutBtn");
-
   if (!notice || !loginBtn || !logoutBtn) return;
 
   if (currentUser) {
     notice.classList.add("logged-in");
-    notice.innerHTML = `<strong>ログイン中：</strong>${currentUser.email}　クラウド保存デモが有効です。`;
+    notice.innerHTML = `<strong>ログイン中：</strong>${currentUser.email || "Googleユーザー"}　${message || "クラウド保存が使えます。"}`;
     loginBtn.classList.add("hidden");
     logoutBtn.classList.remove("hidden");
   } else {
     notice.classList.remove("logged-in");
-    notice.innerHTML = `<strong>未ログインです。</strong>現在はこの端末だけに一時保存されます。クラウド保存を使うにはGoogleログインが必要です。`;
+    notice.innerHTML = `<strong>未ログインです。</strong>現在はこの端末だけに一時保存されます。クラウド保存にはGoogleログインが必要です。`;
     loginBtn.classList.remove("hidden");
     logoutBtn.classList.add("hidden");
   }
 }
 
-function loginDemo() {
-  currentUser = {
-    uid: "demo-user",
-    email: "teacher@example.com"
-  };
-  localStorage.setItem("laclass30UserDemo", JSON.stringify(currentUser));
-  updateLoginUI();
-  alert("Googleログインのデモです。本番ではFirebase Authenticationに接続します。");
+async function loginWithGoogle() {
+  try {
+    await signInWithPopup(auth, provider);
+  } catch (error) {
+    console.error(error);
+    alert("Googleログインに失敗しました。AuthenticationでGoogleログインが有効か確認してください。");
+  }
 }
 
-function logoutDemo() {
-  currentUser = null;
-  localStorage.removeItem("laclass30UserDemo");
-  updateLoginUI();
+async function logoutGoogle() {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error(error);
+    alert("ログアウトに失敗しました。");
+  }
 }
+
 
 function loadState() {
-  const saved = localStorage.getItem("laclass30State");
+  const saved = localStorage.getItem("laclass40LocalState");
   if (saved) state = JSON.parse(saved);
 
   if (!state.printSettings) {
@@ -788,17 +843,22 @@ function bindEvents() {
     renderAll();
   });
 
-  $("saveAllBtn").addEventListener("click", () => {
+  $("saveAllBtn").addEventListener("click", async () => {
+    saveState();
     if (!currentUser) {
-      alert("保存にはGoogleログインが必要です。現在はこの端末だけに一時保存されています。");
+      alert("この端末には一時保存しました。クラウド保存にはGoogleログインが必要です。");
       return;
     }
-    saveState();
-    alert("保存しました。");
+    try {
+      await saveToCloud();
+    } catch (error) {
+      console.error(error);
+      alert("クラウド保存に失敗しました。FirestoreのRulesやAuthentication設定を確認してください。");
+    }
   });
 
-  $("loginBtn").addEventListener("click", loginDemo);
-  $("logoutBtn").addEventListener("click", logoutDemo);
+  $("loginBtn").addEventListener("click", loginWithGoogle);
+  $("logoutBtn").addEventListener("click", logoutGoogle);
 
   $("generateSeatsBtn").addEventListener("click", () => createSeats("random"));
   $("balancedSeatsBtn").addEventListener("click", () => createSeats("balanced"));
@@ -840,14 +900,25 @@ function bindEvents() {
 }
 
 loadState();
-
-const savedUser = localStorage.getItem("laclass30UserDemo");
-if (savedUser) {
-  currentUser = JSON.parse(savedUser);
-}
-
 currentSeats = currentClass().currentSeats || [];
 bindEvents();
 renderAll();
 updateLoginUI();
 resetTimer();
+
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+  updateLoginUI();
+  if (user) {
+    try {
+      await loadFromCloud();
+    } catch (error) {
+      console.error(error);
+      updateLoginUI("クラウド読み込みに失敗しました。");
+    }
+  } else {
+    currentSeats = currentClass().currentSeats || [];
+    renderAll();
+    updateLoginUI();
+  }
+});

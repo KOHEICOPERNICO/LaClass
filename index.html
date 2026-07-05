@@ -4,18 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>LaClass 3.0｜先生のための座席表・学級経営ツール</title>
-  <meta name="description" content="LaClass（ラクラス）は、座席表、班分け、発表順、授業タイマーをブラウザで簡単に作成できる先生向け学級経営ツールです。貼り出し用・教卓用印刷、NGペア、男女バランスにも対応。" />
+  <title>LaClass 4.0｜先生のための学級経営ワークスペース</title>
+  <meta name="description" content="LaClass（ラクラス）は、座席表、班分け、発表順、授業タイマーをブラウザで簡単に作成できる先生向け学級経営ツールです。Googleログインとクラウド保存に対応。" />
 
   <meta name="google-site-verification" content="ここにSearch Consoleの認証コード" />
   <meta property="og:title" content="LaClass｜先生のための座席表・学級経営ツール" />
-  <meta property="og:description" content="座席表、班分け、発表順、授業タイマーをブラウザで簡単作成。" />
+  <meta property="og:description" content="座席表、班分け、発表順、授業タイマーをブラウザで簡単作成。Googleログインとクラウド保存に対応。" />
   <meta property="og:type" content="website" />
   <meta name="theme-color" content="#5b5df7" />
-  <!-- AdSense審査通過後、下に広告コードを貼ります。
-  例：
-  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXX" crossorigin="anonymous"></script>
-  -->
+  <!-- AdSense審査通過後、ここに広告コードを貼ります。 -->
 
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -43,15 +40,15 @@
       </nav>
 
       <div class="sidebar-footer">
-        <p>LaClass 3.0</p>
-        <small>ログイン保存・公開対応</small>
+        <p>LaClass 4.0</p>
+        <small>Firebase保存対応</small>
       </div>
     </aside>
 
     <main class="workspace">
       <header class="topbar">
         <div>
-          <p class="eyebrow">LaClass 3.0</p>
+          <p class="eyebrow">LaClass 4.0</p>
           <h1 id="pageTitle">ホーム</h1>
         </div>
         <div class="top-actions">
@@ -64,15 +61,15 @@
 
       <div id="loginNotice" class="login-notice">
         <strong>未ログインです。</strong>
-        現在はこの端末だけに一時保存されます。クラウド保存を使うにはGoogleログインが必要です。
+        現在はこの端末だけに一時保存されます。クラウド保存にはGoogleログインが必要です。
       </div>
 
       <section id="dashboardView" class="view active">
         <div class="hero-panel">
           <div>
             <p class="badge">先生が毎日開くワークスペース</p>
-            <h2>先生の座席表づくりを、もっと簡単に。</h2>
-            <p>LaClassは、座席表・班分け・発表順・タイマーをまとめて使える先生向けツールです。</p>
+            <h2>ログインすれば、座席表をクラウド保存。</h2>
+            <p>LaClassは、座席表・班分け・発表順・タイマーをまとめて使える先生向けツールです。Googleログインで保存できます。</p>
             <div class="actions">
               <button id="quickStartBtn">＋ クラスを作る</button>
               <button class="secondary" data-jump="seatView">座席表へ</button>
@@ -110,27 +107,6 @@
           </div>
         </section>
       </section>
-
-        <section class="section seo-section">
-          <div class="section-title">
-            <h3>LaClassでできること</h3>
-            <p>先生の毎日の学級経営に必要な小さな作業を、ブラウザだけで素早く進められます。</p>
-          </div>
-          <div class="seo-grid">
-            <article>
-              <h4>座席表をすばやく作成</h4>
-              <p>出席番号順、男女交互、ランダム席替え、NGペア回避に対応しています。</p>
-            </article>
-            <article>
-              <h4>貼り出し用・教卓用に対応</h4>
-              <p>教室掲示用と先生が教卓で見る用の座席表を切り替えられます。</p>
-            </article>
-            <article>
-              <h4>班分け・発表順も一緒に</h4>
-              <p>授業中によく使う班分け、発表順、タイマーもまとめて使えます。</p>
-            </article>
-          </div>
-        </section>
 
       <section id="seatView" class="view">
         <div class="section no-print">
@@ -371,6 +347,6 @@
     </div>
   </div>
 
-  <script src="script.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
