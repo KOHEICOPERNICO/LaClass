@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>LaClass アプリ｜座席表・クラス管理</title>
+  <meta name="description" content="LaClass（ラクラス）は、座席表、クラス管理、班分け、指名ルーレット、発表順、授業タイマーをブラウザで簡単に使える先生向け学級経営ツールです。Googleログインとクラウド保存に対応。" />
+  <meta name="google-site-verification" content="ここにSearch Consoleの認証コード" />
+  <meta property="og:title" content="LaClass｜先生のための座席表・学級経営ツール" />
+  <meta property="og:description" content="座席表、クラス管理、指名ルーレット、班分け、発表順、授業タイマーをブラウザで簡単作成。" />
+  <meta property="og:type" content="website" />
+  <meta name="theme-color" content="#5b5df7" />
+
+  <!-- AdSense審査通過後、ここに広告コードを貼ります。 -->
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">L</div>
+        <div>
+          <strong>LaClass</strong>
+          <span>Teacher tools</span>
+        </div>
+      </div>
+
+      <button class="create-class-btn" id="openClassModalBtn">＋ 新しいクラス</button>
+
+      <nav class="side-nav">
+        <button class="nav-item active" data-view="dashboardView">🏠 ホーム</button>
+        <button class="nav-item" data-view="classView">🏫 クラス管理</button>
+        <button class="nav-item" data-view="seatView">🪑 座席表</button>
+        <button class="nav-item" data-view="groupView">👥 班分け</button>
+        <button class="nav-item" data-view="pickerView">🎯 指名ルーレット</button>
+        <button class="nav-item" data-view="orderView">🎤 発表順</button>
+        <button class="nav-item" data-view="timerView">⏱ タイマー</button>
+        <button class="nav-item" data-view="settingsView">⚙️ 設定</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p>LaClass 7.0</p>
+        <small>Class management / Picker</small>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LaClass 7.0</p>
+          <h1 id="pageTitle">ホーム</h1>
+        </div>
+        <div class="top-actions">
+          <select id="schoolYearSelect"></select>
+          <select id="classSelect"></select>
+          <button id="loginBtn" class="secondary">Googleログイン</button>
+          <button id="logoutBtn" class="ghost hidden">ログアウト</button>
+          <button id="saveAllBtn">端末保存</button>
+          <button id="manualCloudSaveBtn" class="secondary">クラウド保存</button>
+          <button id="manualCloudLoadBtn" class="ghost">クラウド読込</button>
+        </div>
+      </header>
+
+      <div id="saveStatus" class="save-status">保存状態：未ログイン</div>
+
+      <div id="loginNotice" class="login-notice">
+        <strong>未ログインです。</strong>
+        現在はこの端末だけに一時保存されます。クラウド自動保存にはGoogleログインが必要です。
+      </div>
+
+      <section id="dashboardView" class="view active">
+        <div class="hero-panel">
+          <div>
+            <p class="badge">先生が毎日開くワークスペース</p>
+            <h2>座席表も、指名も、クラス管理も。</h2>
+            <p>LaClassは、授業中と学級経営で使う小さな作業をまとめて支える先生向けツールです。</p>
+            <div class="actions">
+              <button id="quickStartBtn">＋ クラスを作る</button>
+              <button class="secondary" data-jump="pickerView">指名ルーレットへ</button>
+              <button class="ghost" data-jump="seatView">座席表へ</button>
+            </div>
+          </div>
+          <div class="glass-card">
+            <span>Current class</span>
+            <strong id="studentCount">0人</strong>
+            <p id="currentClassLabel">登録中の生徒数</p>
+          </div>
+        </div>
+
+        <section class="section ad-section">
+          <p class="ad-label">広告</p>
+          <div class="ad-placeholder">AdSense広告枠</div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">
+            <h3>クラス一覧</h3>
+            <p>年度ごとにクラスを管理できます。検索してすぐ切り替えられます。</p>
+          </div>
+          <div class="inline-controls">
+            <input id="dashboardClassSearch" placeholder="クラス検索：例 高2、中3、A組">
+          </div>
+          <div id="classCards" class="class-grid"></div>
+        </section>
+
+        <section class="section">
+          <div class="section-title">
+            <h3>よく使うツール</h3>
+          </div>
+          <div class="tool-grid">
+            <button class="tool-shortcut" data-jump="classView">🏫<strong>クラス管理</strong><span>年度・名簿を管理</span></button>
+            <button class="tool-shortcut" data-jump="seatView">🪑<strong>座席表</strong><span>貼り出し用・教卓用</span></button>
+            <button class="tool-shortcut" data-jump="pickerView">🎯<strong>指名ルーレット</strong><span>授業中に1名を選ぶ</span></button>
+            <button class="tool-shortcut" data-jump="groupView">👥<strong>班分け</strong><span>ランダム作成</span></button>
+          </div>
+        </section>
+      </section>
+
+      <section id="classView" class="view">
+        <div class="section">
+          <div class="section-title">
+            <h3>クラス管理</h3>
+            <p>年度、クラス名、名簿、性別、配慮メモ、NGペアを管理します。</p>
+          </div>
+
+          <div class="class-admin-grid">
+            <div class="sub-panel">
+              <h4>年度管理</h4>
+              <div class="control-panel compact">
+                <label>年度<input id="yearInput" placeholder="例：2026"></label>
+                <button id="addYearBtn">年度追加</button>
+              </div>
+              <div id="yearList" class="pill-list"></div>
+            </div>
+
+            <div class="sub-panel">
+              <h4>クラス検索</h4>
+              <input id="classSearchInput" placeholder="例：高2A、中3、小4">
+              <div id="classSearchResult" class="memo-list"></div>
+            </div>
+          </div>
+
+          <div class="settings-grid">
+            <div>
+              <label>クラス名<input id="classNameInput" placeholder="例：高2A"></label>
+              <label>名簿<textarea id="studentInput" placeholder="1行に1人ずつ入力。上から出席番号順になります。"></textarea></label>
+              <div class="actions">
+                <button id="updateClassBtn">クラス情報を更新</button>
+                <button id="duplicateClassBtn" class="secondary">このクラスを複製</button>
+                <button class="danger" id="deleteClassBtn">クラス削除</button>
+              </div>
+
+              <div class="sub-panel">
+                <h4>生徒一覧</h4>
+                <p class="muted">出席番号・名前・性別・配慮メモを一覧で確認できます。</p>
+                <div id="studentTable" class="student-table"></div>
+              </div>
+            </div>
+
+            <div>
+              <div class="sub-panel">
+                <h4>性別設定</h4>
+                <p class="muted">男女バランス・男女交互配置で使います。</p>
+                <div id="genderList" class="mini-list"></div>
+                <button id="saveGenderBtn">性別を保存</button>
+              </div>
+
+              <div class="sub-panel">
+                <h4>NGペア設定</h4>
+                <p class="muted">近くにしたくない組み合わせを登録します。</p>
+                <div class="control-panel compact">
+                  <select id="ngStudentA"></select>
+                  <select id="ngStudentB"></select>
+                </div>
+                <button id="addNgPairBtn">NGペア追加</button>
+                <div id="ngPairList" class="memo-list"></div>
+              </div>
+
+              <div class="sub-panel">
+                <h4>配慮メモ</h4>
+                <p class="muted">例：視力、前方席、支援、集中しやすい場所など。</p>
+                <div class="control-panel compact">
+                  <select id="careStudentSelect"></select>
+                  <input id="careMemoInput" placeholder="例：前方席がよい">
+                </div>
+                <button id="addCareMemoBtn">メモ追加</button>
+                <div id="careMemoList" class="memo-list"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="seatView" class="view">
+        <div class="section no-print">
+          <div class="section-title">
+            <h3>座席表エディタ</h3>
+            <p>印刷形式を切り替えると、黒板位置と座席の向きが自動で変わります。</p>
+          </div>
+
+          <div class="control-panel">
+            <label>行数<input id="seatRows" type="number" min="1" value="5"></label>
+            <label>列数<input id="seatCols" type="number" min="1" value="6"></label>
+            <label>固定する名前<input id="fixedStudent" placeholder="例：田中 太郎"></label>
+            <label>固定席<input id="fixedPosition" placeholder="例：1-1"></label>
+          </div>
+
+          <div class="print-panel">
+            <div>
+              <label>印刷形式</label>
+              <div class="segmented">
+                <button class="print-mode-btn active" data-print-mode="posting">貼り出し用</button>
+                <button class="print-mode-btn" data-print-mode="teacher">教卓用</button>
+              </div>
+              <p class="muted small-note">貼り出し用：黒板上／通常表示。教卓用：黒板下／座席上下反転。</p>
+            </div>
+            <div>
+              <label>印刷向き</label>
+              <div class="segmented">
+                <button class="orientation-btn active" data-orientation="portrait">A4縦</button>
+                <button class="orientation-btn" data-orientation="landscape">A4横</button>
+              </div>
+            </div>
+            <div>
+              <label>表示</label>
+              <div class="check-row">
+                <label><input type="checkbox" id="showNumberCheck" checked> 出席番号</label>
+                <label><input type="checkbox" id="showGenderCheck" checked> 性別</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="ng-zone-panel">
+            <label>NGペア回避範囲</label>
+            <div class="segmented wide-segmented">
+              <button class="ng-zone-btn active" data-zone="side">左右の隣</button>
+              <button class="ng-zone-btn" data-zone="frontBack">左右＋前後</button>
+              <button class="ng-zone-btn" data-zone="diagonal">左右＋斜め</button>
+              <button class="ng-zone-btn" data-zone="around">周囲8方向</button>
+            </div>
+          </div>
+
+          <div class="placement-panel">
+            <label>配置パターン</label>
+            <div class="segmented wide-segmented">
+              <button id="numberVerticalBtn">出席番号順・縦</button>
+              <button id="numberHorizontalBtn">出席番号順・横</button>
+              <button id="genderVerticalBtn">男女交互・縦</button>
+              <button id="genderHorizontalBtn">男女交互・横</button>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="generateSeatsBtn">ランダム座席表</button>
+            <button class="secondary" id="balancedSeatsBtn">男女バランス席替え</button>
+            <button class="ghost" id="printSeatBtn">印刷 / PDF</button>
+          </div>
+
+          <div class="ai-options">
+            <label><input type="checkbox" id="avoidPreviousCheck" checked> 前回の席を避ける</label>
+            <label><input type="checkbox" id="avoidNgPairCheck" checked> NGペアを指定範囲内にしない</label>
+            <label><input type="checkbox" id="frontCareCheck" checked> 配慮メモのある生徒を前方寄り</label>
+          </div>
+
+          <div id="seatWarnings" class="warning-box hidden"></div>
+        </div>
+
+        <div id="printSeatArea" class="print-seat-area print-posting portrait">
+          <div class="blackboard board-label">黒板</div>
+          <div id="seatChart" class="seat-chart"></div>
+        </div>
+      </section>
+
+      <section id="groupView" class="view">
+        <div class="section">
+          <div class="section-title">
+            <h3>班分けメーカー</h3>
+            <p>班数を指定して、現在のクラス名簿からランダムに班を作ります。</p>
+          </div>
+          <div class="control-panel compact">
+            <label>班数<input id="groupCount" type="number" min="1" value="6"></label>
+          </div>
+          <button id="makeGroupsBtn">班分けする</button>
+          <div id="groupResult" class="result-grid"></div>
+        </div>
+      </section>
+
+      <section id="pickerView" class="view">
+        <div class="section picker-section">
+          <div class="section-title">
+            <h3>指名ルーレット</h3>
+            <p>授業中に、生徒1名をランダムに選びます。一度当たった生徒を除外できます。</p>
+          </div>
+
+          <div class="picker-layout">
+            <div class="picker-main-card">
+              <div class="picker-label">今回の指名</div>
+              <div id="pickedStudent" class="picked-student">?</div>
+              <div id="pickedMeta" class="picked-meta">ボタンを押すと1名選びます</div>
+              <div class="actions center">
+                <button id="pickStudentBtn">指名する</button>
+                <button id="resetPickerBtn" class="ghost">履歴リセット</button>
+              </div>
+            </div>
+
+            <div class="picker-side">
+              <div class="sub-panel">
+                <h4>指名設定</h4>
+                <label><input type="checkbox" id="excludePickedCheck" checked> 一度当たった生徒を除外</label>
+                <label><input type="checkbox" id="skipAbsentCheck"> 欠席扱いの生徒を除外</label>
+                <label>対象
+                  <select id="pickerGenderFilter">
+                    <option value="all">全員</option>
+                    <option value="男">男子のみ</option>
+                    <option value="女">女子のみ</option>
+                    <option value="その他">その他のみ</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="sub-panel">
+                <h4>欠席・除外</h4>
+                <p class="muted">授業中に今日は指名しない生徒を選べます。</p>
+                <div id="absentList" class="mini-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section inner-section">
+            <div class="section-title">
+              <h3>指名履歴</h3>
+            </div>
+            <div id="pickerHistory" class="history-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="orderView" class="view">
+        <div class="section">
+          <div class="section-title">
+            <h3>発表順ランダム</h3>
+            <p>発表、音読、スピーチ、順番決めに使えます。</p>
+          </div>
+          <div class="actions">
+            <button id="makeOrderBtn">順番を作る</button>
+            <button class="secondary" id="copyOrderBtn">コピー</button>
+          </div>
+          <ol id="orderResult" class="order-list"></ol>
+        </div>
+      </section>
+
+      <section id="timerView" class="view">
+        <div class="section timer-section">
+          <div class="section-title">
+            <h3>授業タイマー</h3>
+            <p>ペアワーク・個人作業・発表準備に。</p>
+          </div>
+          <div class="control-panel compact">
+            <label>分<input id="timerMinutes" type="number" min="0" value="5"></label>
+            <label>秒<input id="timerSeconds" type="number" min="0" value="0"></label>
+          </div>
+          <div id="timerDisplay" class="timer-display">05:00</div>
+          <div class="actions center">
+            <button id="startTimerBtn">スタート</button>
+            <button class="secondary" id="pauseTimerBtn">一時停止</button>
+            <button class="ghost" id="resetTimerBtn">リセット</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="settingsView" class="view">
+        <div class="section">
+          <div class="section-title">
+            <h3>設定</h3>
+            <p>LaClass全体の設定です。</p>
+          </div>
+          <div class="sub-panel">
+            <h4>保存について</h4>
+            <p class="muted">未ログイン時は端末内保存のみ。Googleログイン後はFirestoreにクラウド保存されます。</p>
+          </div>
+          <div class="sub-panel">
+            <h4>データ初期化</h4>
+            <p class="muted">この端末の保存データを削除します。クラウドデータは削除されません。</p>
+            <button id="clearLocalBtn" class="danger">端末データを削除</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <a href="privacy.html">プライバシーポリシー</a>
+    <span>© LaClass</span>
+  </footer>
+
+  <div id="classModal" class="modal hidden">
+    <div class="modal-card">
+      <button class="modal-close" id="closeClassModalBtn">×</button>
+      <h2>新しいクラス</h2>
+      <p>年度、クラス名、名簿を入力してください。</p>
+      <label>年度<input id="newClassYear" placeholder="例：2026"></label>
+      <label>クラス名<input id="newClassName" placeholder="例：高2A"></label>
+      <label>名簿<textarea id="newClassStudents" placeholder="田中 太郎
+佐藤 花子
+鈴木 一郎"></textarea></label>
+      <button id="createClassBtn">作成する</button>
+    </div>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>

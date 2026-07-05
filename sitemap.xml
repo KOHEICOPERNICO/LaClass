@@ -1,5 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://example.com/</loc><priority>1.0</priority></url>
-  <url><loc>https://example.com/privacy.html</loc><priority>0.3</priority></url>
+  <url><loc>https://example.com/app.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/guide.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/faq.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/terms.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/privacy.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/contact.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/updates.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/blog.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/blog/seating.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/blog/ngpair.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/blog/groups.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/blog/classroom.html</loc><priority>0.7</priority></url>
+  <url><loc>https://example.com/blog/ai.html</loc><priority>0.7</priority></url>
 </urlset>
