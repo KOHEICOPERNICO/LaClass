@@ -616,3 +616,17 @@ body.hide-number .seat-number,body.hide-gender .seat-gender{display:none}
 .public-footer-inner{max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
 .public-footer a{color:var(--muted);text-decoration:none;font-weight:850;margin-right:12px}
 @media(max-width:860px){.marketing-hero{grid-template-columns:1fr}.public-nav{align-items:flex-start;flex-direction:column}.public-links{gap:10px}}
+
+
+.contact-box .public-button {
+  margin-top: 12px;
+}
+
+.contact-box h2 {
+  margin-top: 0;
+}
+
+.legal-layout a {
+  color: var(--blue);
+  font-weight: 900;
+}
