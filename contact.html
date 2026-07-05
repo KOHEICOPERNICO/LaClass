@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
   <title>お問い合わせ｜LaClass</title>
-  <meta name="description" content="LaClassへのお問い合わせ、不具合報告、機能追加のご要望はこちらからご連絡ください。" />
+  <meta name="description" content="LaClassへのお問い合わせ、不具合報告、機能追加のご要望はこちらから送信できます。" />
   <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -36,24 +36,91 @@
 
       <p>
         LaClassへのご質問、不具合報告、機能追加のご要望、広告掲載に関するご相談は、
-        以下のお問い合わせフォームよりご連絡ください。
+        以下のフォームより送信してください。
       </p>
 
-      <div class="contact-box">
-        <h2>お問い合わせフォーム</h2>
-        <p>
-          Googleフォームが開きます。通常3営業日以内を目安に確認いたします。
-        </p>
+      <div id="contactStatus" class="contact-status hidden"></div>
 
-        <a
-          class="public-button dark"
-          href="https://forms.gle/ここにGoogleフォームURL"
-          target="_blank"
-          rel="noopener"
-        >
-          お問い合わせフォームを開く
-        </a>
-      </div>
+      <form id="contactForm" class="contact-form">
+        <div class="form-grid">
+          <label>
+            お名前
+            <input id="contactName" name="name" type="text" placeholder="例：山田 太郎" required />
+          </label>
+
+          <label>
+            メールアドレス
+            <input id="contactEmail" name="email" type="email" placeholder="example@example.com" required />
+          </label>
+        </div>
+
+        <label>
+          お問い合わせ種別
+          <select id="contactType" name="type" required>
+            <option value="">選択してください</option>
+            <option value="不具合報告">不具合報告</option>
+            <option value="機能追加の要望">機能追加の要望</option>
+            <option value="ご質問">ご質問</option>
+            <option value="広告掲載について">広告掲載について</option>
+            <option value="その他">その他</option>
+          </select>
+        </label>
+
+        <label>
+          件名
+          <input id="contactSubject" name="subject" type="text" placeholder="例：座席表の印刷について" required />
+        </label>
+
+        <label>
+          お問い合わせ内容
+          <textarea id="contactMessage" name="message" placeholder="お問い合わせ内容を入力してください。" required></textarea>
+        </label>
+
+        <div class="form-grid">
+          <label>
+            利用環境
+            <select id="contactDevice" name="device">
+              <option value="">選択してください</option>
+              <option value="Windows">Windows</option>
+              <option value="Mac">Mac</option>
+              <option value="iPad">iPad</option>
+              <option value="iPhone">iPhone</option>
+              <option value="Android">Android</option>
+              <option value="Chromebook">Chromebook</option>
+              <option value="その他">その他</option>
+            </select>
+          </label>
+
+          <label>
+            ブラウザ
+            <select id="contactBrowser" name="browser">
+              <option value="">選択してください</option>
+              <option value="Chrome">Chrome</option>
+              <option value="Edge">Edge</option>
+              <option value="Safari">Safari</option>
+              <option value="Firefox">Firefox</option>
+              <option value="その他">その他</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          LaClassのバージョン
+          <input id="contactVersion" name="version" type="text" value="LaClass 8.0" />
+        </label>
+
+        <label class="agree-row">
+          <input id="privacyAgree" type="checkbox" required />
+          <span>
+            <a href="privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a>
+            を確認し、内容に同意します。
+          </span>
+        </label>
+
+        <button id="contactSubmitBtn" type="submit" class="public-button dark">
+          送信する
+        </button>
+      </form>
 
       <section class="public-section soft">
         <h2>お問い合わせ前にご確認ください</h2>
@@ -81,29 +148,6 @@
           </div>
         </div>
       </section>
-
-      <section class="public-section">
-        <h2>フォームに含める項目</h2>
-        <p>Googleフォームには、以下の項目を設定することをおすすめします。</p>
-
-        <ul>
-          <li>お名前</li>
-          <li>メールアドレス</li>
-          <li>お問い合わせ種別</li>
-          <li>件名</li>
-          <li>お問い合わせ内容</li>
-          <li>利用環境</li>
-          <li>ブラウザ</li>
-          <li>LaClassのバージョン</li>
-          <li>プライバシーポリシーへの同意</li>
-        </ul>
-
-        <p>
-          プライバシーポリシーは
-          <a href="privacy.html">こちら</a>
-          から確認できます。
-        </p>
-      </section>
     </section>
   </main>
 
@@ -125,5 +169,7 @@
       </div>
     </div>
   </footer>
+
+  <script type="module" src="contact.js"></script>
 </body>
 </html>
