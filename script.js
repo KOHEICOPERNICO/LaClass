@@ -22,7 +22,9 @@ const db = getFirestore(firebaseApp);
 const $ = (id) => document.getElementById(id);
 
 let state = {
+  currentYear: "2026",
   currentClassId: null,
+  years: ["2026"],
   classes: [],
   printSettings: {
     printMode: "posting",
@@ -30,38 +32,115 @@ let state = {
     showNumber: true,
     showGender: true,
     ngZone: "around"
+  },
+  picker: {
+    historyByClass: {},
+    absentByClass: {}
   }
 };
 
 let currentSeats = [];
 let draggedSeatIndex = null;
 let currentUser = null;
+let autoSaveTimer = null;
+let isCloudSaving = false;
+let lastCloudSavedAt = null;
 
 function uid() {
   return "id_" + Math.random().toString(36).slice(2, 10);
 }
 
-function saveState() {
-  localStorage.setItem("laclass40LocalState", JSON.stringify(state));
+function migrateState() {
+  state.years = state.years || ["2026"];
+  state.currentYear = state.currentYear || state.years[0] || "2026";
+  state.picker = state.picker || { historyByClass: {}, absentByClass: {} };
+  state.picker.historyByClass = state.picker.historyByClass || {};
+  state.picker.absentByClass = state.picker.absentByClass || {};
+  state.printSettings = state.printSettings || {
+    printMode: "posting",
+    orientation: "portrait",
+    showNumber: true,
+    showGender: true,
+    ngZone: "around"
+  };
+  state.classes = state.classes || [];
+
+  state.classes.forEach(cls => {
+    cls.year = cls.year || state.currentYear || "2026";
+    cls.genders = cls.genders || {};
+    cls.ngPairs = cls.ngPairs || [];
+    cls.careMemos = cls.careMemos || {};
+    cls.lastSeats = cls.lastSeats || [];
+    cls.currentSeats = cls.currentSeats || [];
+    cls.updatedAtText = cls.updatedAtText || "";
+  });
 }
 
+function saveState(options = { cloud: true }) {
+  localStorage.setItem("laclass60LocalState", JSON.stringify(state));
+  updateSaveStatus(currentUser ? "端末保存済み・クラウド保存待ち" : "端末保存済み");
+
+  if (options.cloud && currentUser) {
+    scheduleCloudSave();
+  }
+}
+
+function updateSaveStatus(message, type = "") {
+  const status = $("saveStatus");
+  if (!status) return;
+  status.classList.remove("saving", "saved", "error");
+  if (type) status.classList.add(type);
+  status.textContent = `保存状態：${message}`;
+}
+
+function scheduleCloudSave() {
+  if (!currentUser) return;
+  clearTimeout(autoSaveTimer);
+  updateSaveStatus("自動保存待ち", "saving");
+  autoSaveTimer = setTimeout(async () => {
+    try {
+      await saveToCloud({ silent: true });
+    } catch (error) {
+      console.error(error);
+      updateSaveStatus("自動保存に失敗しました", "error");
+    }
+  }, 1800);
+}
+
+function formatSavedTime(date) {
+  if (!date) return "";
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  const s = String(date.getSeconds()).padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
 
 function getUserDocRef() {
   if (!currentUser) return null;
   return doc(db, "users", currentUser.uid, "appData", "main");
 }
 
-async function saveToCloud() {
+async function saveToCloud(options = { silent: false }) {
   if (!currentUser) {
-    alert("クラウド保存にはGoogleログインが必要です。");
+    if (!options.silent) alert("クラウド保存にはGoogleログインが必要です。");
+    updateSaveStatus("未ログインのため端末保存のみ", "error");
     return false;
   }
+  if (isCloudSaving) return false;
+  isCloudSaving = true;
+  updateSaveStatus("クラウド保存中...", "saving");
+
   await setDoc(getUserDocRef(), {
     state,
     updatedAt: serverTimestamp(),
-    app: "LaClass"
+    app: "LaClass",
+    version: "6.0"
   }, { merge: true });
-  updateLoginUI("クラウド保存しました。");
+
+  isCloudSaving = false;
+  lastCloudSavedAt = new Date();
+  updateSaveStatus(`クラウド保存済み ${formatSavedTime(lastCloudSavedAt)}`, "saved");
+  if (!options.silent) updateLoginUI("クラウド保存しました。");
   return true;
 }
 
@@ -70,22 +149,16 @@ async function loadFromCloud() {
   const snap = await getDoc(getUserDocRef());
   if (snap.exists() && snap.data().state) {
     state = snap.data().state;
-    localStorage.setItem("laclass40LocalState", JSON.stringify(state));
-    state.classes = state.classes || [];
-    state.printSettings = state.printSettings || {
-      printMode: "posting",
-      orientation: "portrait",
-      showNumber: true,
-      showGender: true,
-      ngZone: "around"
-    };
-    if (!state.currentClassId && state.classes.length) state.currentClassId = state.classes[0].id;
+    migrateState();
+    localStorage.setItem("laclass60LocalState", JSON.stringify(state));
     currentSeats = currentClass().currentSeats || [];
     renderAll();
     updateLoginUI("クラウドから読み込みました。");
+    updateSaveStatus("クラウドから読み込み済み", "saved");
     return true;
   }
   updateLoginUI("ログイン中です。まだクラウド保存データはありません。");
+  updateSaveStatus("クラウド保存データなし", "saving");
   return false;
 }
 
@@ -97,12 +170,12 @@ function updateLoginUI(message = "") {
 
   if (currentUser) {
     notice.classList.add("logged-in");
-    notice.innerHTML = `<strong>ログイン中：</strong>${currentUser.email || "Googleユーザー"}　${message || "クラウド保存が使えます。"}`;
+    notice.innerHTML = `<strong>ログイン中：</strong>${currentUser.email || "Googleユーザー"}　${message || "クラウド自動保存が使えます。"}`;
     loginBtn.classList.add("hidden");
     logoutBtn.classList.remove("hidden");
   } else {
     notice.classList.remove("logged-in");
-    notice.innerHTML = `<strong>未ログインです。</strong>現在はこの端末だけに一時保存されます。クラウド保存にはGoogleログインが必要です。`;
+    notice.innerHTML = `<strong>未ログインです。</strong>現在はこの端末だけに一時保存されます。クラウド自動保存にはGoogleログインが必要です。`;
     loginBtn.classList.remove("hidden");
     logoutBtn.classList.add("hidden");
   }
@@ -113,7 +186,7 @@ async function loginWithGoogle() {
     await signInWithPopup(auth, provider);
   } catch (error) {
     console.error(error);
-    alert("Googleログインに失敗しました。AuthenticationでGoogleログインが有効か確認してください。");
+    alert("Googleログインに失敗しました。Authenticationや承認済みドメインを確認してください。");
   }
 }
 
@@ -126,20 +199,18 @@ async function logoutGoogle() {
   }
 }
 
-
 function loadState() {
-  const saved = localStorage.getItem("laclass40LocalState");
-  if (saved) state = JSON.parse(saved);
+  const saved60 = localStorage.getItem("laclass60LocalState");
+  const saved50 = localStorage.getItem("laclass40LocalState");
+  if (saved60) state = JSON.parse(saved60);
+  else if (saved50) state = JSON.parse(saved50);
 
-  if (!state.printSettings) {
-    state.printSettings = { printMode: "posting", orientation: "portrait", showNumber: true, showGender: true, ngZone: "around" };
-  }
-  if (!state.printSettings.printMode) state.printSettings.printMode = "posting";
-  if (!state.printSettings.ngZone) state.printSettings.ngZone = "around";
+  migrateState();
 
   if (!state.classes || state.classes.length === 0) {
     const defaultClass = {
       id: uid(),
+      year: "2026",
       name: "高2A",
       students: [
         "田中 太郎", "佐藤 花子", "鈴木 一郎", "高橋 美咲", "伊藤 蓮",
@@ -151,31 +222,33 @@ function loadState() {
       ngPairs: [["田中 太郎", "佐藤 花子"]],
       careMemos: {},
       lastSeats: [],
-      currentSeats: []
+      currentSeats: [],
+      updatedAtText: ""
     };
 
     defaultClass.students.forEach((name, index) => {
       defaultClass.genders[name] = index % 2 === 0 ? "男" : "女";
     });
 
+    state.years = ["2026"];
+    state.currentYear = "2026";
     state.classes = [defaultClass];
     state.currentClassId = defaultClass.id;
-    saveState();
+    saveState({ cloud: false });
   }
 
-  if (!state.currentClassId) state.currentClassId = state.classes[0].id;
-
-  state.classes.forEach(cls => {
-    cls.genders = cls.genders || {};
-    cls.ngPairs = cls.ngPairs || [];
-    cls.careMemos = cls.careMemos || {};
-    cls.lastSeats = cls.lastSeats || [];
-    cls.currentSeats = cls.currentSeats || [];
-  });
+  if (!state.currentClassId || !currentClass()) {
+    const first = classesForCurrentYear()[0] || state.classes[0];
+    state.currentClassId = first?.id || null;
+  }
 }
 
 function currentClass() {
   return state.classes.find(c => c.id === state.currentClassId) || state.classes[0];
+}
+
+function classesForCurrentYear() {
+  return state.classes.filter(c => String(c.year) === String(state.currentYear));
 }
 
 function getStudents() {
@@ -184,6 +257,18 @@ function getStudents() {
 
 function studentNumber(name) {
   return getStudents().indexOf(name) + 1;
+}
+
+function classPickerHistory(cls = currentClass()) {
+  if (!cls) return [];
+  state.picker.historyByClass[cls.id] = state.picker.historyByClass[cls.id] || [];
+  return state.picker.historyByClass[cls.id];
+}
+
+function classAbsentList(cls = currentClass()) {
+  if (!cls) return [];
+  state.picker.absentByClass[cls.id] = state.picker.absentByClass[cls.id] || [];
+  return state.picker.absentByClass[cls.id];
 }
 
 function shuffle(array) {
@@ -204,67 +289,103 @@ function setView(viewId) {
 
   const titles = {
     dashboardView: "ホーム",
+    classView: "クラス管理",
     seatView: "座席表",
     groupView: "班分け",
+    pickerView: "指名ルーレット",
     orderView: "発表順",
     timerView: "タイマー",
-    aiView: "AI支援",
     settingsView: "設定"
   };
   $("pageTitle").textContent = titles[viewId] || "LaClass";
 }
 
-function applyPrintSettings() {
-  const area = $("printSeatArea");
-  area.classList.remove("print-posting", "print-teacher", "portrait", "landscape");
-  area.classList.add(`print-${state.printSettings.printMode}`);
-  area.classList.add(state.printSettings.orientation);
-
-  document.querySelectorAll(".print-mode-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.printMode === state.printSettings.printMode);
-  });
-  document.querySelectorAll(".orientation-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.orientation === state.printSettings.orientation);
-  });
-  document.querySelectorAll(".ng-zone-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.zone === state.printSettings.ngZone);
-  });
-
-  $("showNumberCheck").checked = state.printSettings.showNumber;
-  $("showGenderCheck").checked = state.printSettings.showGender;
-  document.body.classList.toggle("hide-number", !state.printSettings.showNumber);
-  document.body.classList.toggle("hide-gender", !state.printSettings.showGender);
+function renderYearSelect() {
+  $("schoolYearSelect").innerHTML = state.years.map(y => `<option value="${y}">${y}年度</option>`).join("");
+  $("schoolYearSelect").value = state.currentYear;
 }
 
 function renderClassSelect() {
-  $("classSelect").innerHTML = state.classes.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
+  const list = classesForCurrentYear();
+  if (!list.some(c => c.id === state.currentClassId) && list.length) {
+    state.currentClassId = list[0].id;
+  }
+  $("classSelect").innerHTML = list.map(c => `<option value="${c.id}">${c.name}</option>`).join("");
   $("classSelect").value = state.currentClassId;
 }
 
 function renderDashboard() {
   const cls = currentClass();
-  $("studentCount").textContent = `${cls.students.length}人`;
+  $("studentCount").textContent = `${cls?.students?.length || 0}人`;
+  $("currentClassLabel").textContent = cls ? `${cls.year}年度 ${cls.name}` : "クラス未選択";
+  renderClassCards($("dashboardClassSearch")?.value || "");
+}
 
-  $("classCards").innerHTML = state.classes.map(c => `
-    <div class="class-card" data-class-id="${c.id}">
+function renderClassCards(query = "") {
+  const q = query.trim().toLowerCase();
+  const list = classesForCurrentYear().filter(c => !q || c.name.toLowerCase().includes(q));
+  $("classCards").innerHTML = list.length ? list.map(c => `
+    <div class="class-card ${c.id === state.currentClassId ? "active-class" : ""}" data-class-id="${c.id}">
       <h4>${c.name}</h4>
-      <p>${c.students.length}人</p>
-      <small>NGペア ${c.ngPairs?.length || 0}組 / 貼り出し・教卓対応</small>
+      <p>${c.students.length}人 / ${c.year}年度</p>
+      <small>NGペア ${c.ngPairs?.length || 0}組 / 更新 ${c.updatedAtText || "未保存"}</small>
     </div>
-  `).join("");
+  `).join("") : `<p class="muted">該当するクラスがありません。</p>`;
 
   document.querySelectorAll(".class-card").forEach(card => {
     card.addEventListener("click", () => {
       state.currentClassId = card.dataset.classId;
+      currentSeats = currentClass().currentSeats || [];
       saveState();
       renderAll();
-      setView("seatView");
+      setView("classView");
+    });
+  });
+}
+
+function renderYearList() {
+  $("yearList").innerHTML = state.years.map(y => `
+    <button class="pill ${String(y) === String(state.currentYear) ? "active" : ""}" data-year="${y}">${y}年度</button>
+  `).join("");
+
+  document.querySelectorAll("[data-year]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.currentYear = btn.dataset.year;
+      const first = classesForCurrentYear()[0];
+      if (first) state.currentClassId = first.id;
+      saveState();
+      renderAll();
+    });
+  });
+}
+
+function renderClassSearch() {
+  const q = $("classSearchInput")?.value?.trim()?.toLowerCase() || "";
+  const list = state.classes.filter(c => !q || `${c.year} ${c.name}`.toLowerCase().includes(q));
+  $("classSearchResult").innerHTML = list.length ? list.map(c => `
+    <div class="memo-item">
+      <strong>${c.year}年度 ${c.name}</strong><br>
+      <span>${c.students.length}人</span><br>
+      <button class="remove-btn" data-select-class="${c.id}">このクラスを開く</button>
+    </div>
+  `).join("") : `<p class="muted">該当するクラスがありません。</p>`;
+
+  document.querySelectorAll("[data-select-class]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const cls = state.classes.find(c => c.id === btn.dataset.selectClass);
+      if (!cls) return;
+      state.currentYear = cls.year;
+      state.currentClassId = cls.id;
+      currentSeats = cls.currentSeats || [];
+      saveState();
+      renderAll();
     });
   });
 }
 
 function renderSettings() {
   const cls = currentClass();
+  if (!cls) return;
   $("classNameInput").value = cls.name;
   $("studentInput").value = cls.students.join("\n");
 
@@ -276,6 +397,24 @@ function renderSettings() {
   renderGenderList();
   renderCareMemos();
   renderNgPairs();
+  renderStudentTable();
+  renderAbsentList();
+  renderPickerHistory();
+}
+
+function renderStudentTable() {
+  const cls = currentClass();
+  $("studentTable").innerHTML = `
+    <div class="student-row header"><span>番号</span><span>名前</span><span>性別</span><span>配慮メモ</span></div>
+    ${cls.students.map((name, index) => `
+      <div class="student-row">
+        <span>${index + 1}</span>
+        <strong>${name}</strong>
+        <span>${cls.genders[name] || "未設定"}</span>
+        <span>${cls.careMemos[name] || "-"}</span>
+      </div>
+    `).join("")}
+  `;
 }
 
 function renderGenderList() {
@@ -317,17 +456,36 @@ function renderNgPairs() {
 }
 
 function escapeForAttr(value) { return value.replace(/'/g, "\\'"); }
-function removeCareMemo(name) { delete currentClass().careMemos[name]; saveState(); renderCareMemos(); }
-function removeNgPair(index) { currentClass().ngPairs.splice(index, 1); saveState(); renderNgPairs(); }
+function removeCareMemo(name) { delete currentClass().careMemos[name]; saveState(); renderAll(); }
+function removeNgPair(index) { currentClass().ngPairs.splice(index, 1); saveState(); renderAll(); }
 window.removeCareMemo = removeCareMemo;
 window.removeNgPair = removeNgPair;
 
 function renderAll() {
+  renderYearSelect();
   renderClassSelect();
   renderDashboard();
+  renderYearList();
+  renderClassSearch();
   renderSettings();
   applyPrintSettings();
   if (currentSeats.length) renderSeats();
+}
+
+function applyPrintSettings() {
+  const area = $("printSeatArea");
+  area.classList.remove("print-posting", "print-teacher", "portrait", "landscape");
+  area.classList.add(`print-${state.printSettings.printMode}`);
+  area.classList.add(state.printSettings.orientation);
+
+  document.querySelectorAll(".print-mode-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.printMode === state.printSettings.printMode));
+  document.querySelectorAll(".orientation-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.orientation === state.printSettings.orientation));
+  document.querySelectorAll(".ng-zone-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.zone === state.printSettings.ngZone));
+
+  $("showNumberCheck").checked = state.printSettings.showNumber;
+  $("showGenderCheck").checked = state.printSettings.showGender;
+  document.body.classList.toggle("hide-number", !state.printSettings.showNumber);
+  document.body.classList.toggle("hide-gender", !state.printSettings.showGender);
 }
 
 function makeCards(title, items) {
@@ -337,9 +495,7 @@ function makeCards(title, items) {
 function seatFillIndexes(rows, cols, direction) {
   const indexes = [];
   if (direction === "vertical") {
-    for (let c = 0; c < cols; c++) {
-      for (let r = 0; r < rows; r++) indexes.push(r * cols + c);
-    }
+    for (let c = 0; c < cols; c++) for (let r = 0; r < rows; r++) indexes.push(r * cols + c);
   } else {
     for (let i = 0; i < rows * cols; i++) indexes.push(i);
   }
@@ -349,13 +505,9 @@ function seatFillIndexes(rows, cols, direction) {
 function displayIndexes(rows, cols) {
   const indexes = [];
   if (state.printSettings.printMode === "teacher") {
-    for (let r = rows - 1; r >= 0; r--) {
-      for (let c = 0; c < cols; c++) indexes.push(r * cols + c);
-    }
+    for (let r = rows - 1; r >= 0; r--) for (let c = 0; c < cols; c++) indexes.push(r * cols + c);
   } else {
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) indexes.push(r * cols + c);
-    }
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) indexes.push(r * cols + c);
   }
   return indexes;
 }
@@ -396,10 +548,7 @@ function hasNgNear(seats, index, rows, cols) {
   return getBlockedIndexes(index, rows, cols).some(nIndex => {
     const other = seats[nIndex];
     if (!other) return false;
-    return cls.ngPairs.some(pair =>
-      (pair[0] === name && pair[1] === other) ||
-      (pair[1] === name && pair[0] === other)
-    );
+    return cls.ngPairs.some(pair => (pair[0] === name && pair[1] === other) || (pair[1] === name && pair[0] === other));
   });
 }
 
@@ -475,14 +624,12 @@ function improveSeats(seats, rows, cols) {
   for (let attempt = 0; attempt < 1200; attempt++) {
     let currentScore = problemScore(seats, rows, cols);
     if (currentScore === 0) break;
-
     let bestSeats = seats, bestScore = currentScore;
 
     for (let trial = 0; trial < 80; trial++) {
       const i = Math.floor(Math.random() * seats.length);
       const j = Math.floor(Math.random() * seats.length);
       if (i === j) continue;
-
       const copy = [...seats];
       [copy[i], copy[j]] = [copy[j], copy[i]];
       const score = problemScore(copy, rows, cols);
@@ -503,7 +650,6 @@ function buildGenderAlternatingOrder(students) {
   const boys = students.filter(s => cls.genders[s] === "男");
   const girls = students.filter(s => cls.genders[s] === "女");
   const others = students.filter(s => cls.genders[s] !== "男" && cls.genders[s] !== "女");
-
   const result = [];
   let b = 0, g = 0;
   let turn = boys.length >= girls.length ? "男" : "女";
@@ -566,6 +712,7 @@ function fillSeatsByOrder(order, direction, mode) {
   currentSeats = seats;
   const cls = currentClass();
   cls.currentSeats = seats;
+  cls.updatedAtText = "今";
   saveState();
   renderSeats(rows, cols);
   showWarnings(countProblems(seats, rows, cols, mode));
@@ -578,7 +725,6 @@ function fillSeatsByOrder(order, direction, mode) {
 
 function createSeats(mode = "random") {
   const students = getStudents();
-
   if (mode === "random") return fillSeatsByOrder(shuffle(students), "horizontal", mode);
   if (mode === "balanced") return fillSeatsByOrder(buildBalancedOrder(students), "horizontal", mode);
   if (mode === "numberVertical") return fillSeatsByOrder(students, "vertical", mode);
@@ -605,7 +751,6 @@ function renderSeats(rows = Number($("seatRows").value), cols = Number($("seatCo
 
     const gender = name ? (cls.genders[name] || "未") : "";
     const number = name ? studentNumber(name) : "";
-
     div.innerHTML = name
       ? `<span>${name}</span><span class="seat-meta"><span class="seat-number">${number}</span><span class="seat-number seat-gender-separator"> / </span><span class="seat-gender">${gender}</span></span>`
       : `<span>空席</span>`;
@@ -614,19 +759,17 @@ function renderSeats(rows = Number($("seatRows").value), cols = Number($("seatCo
       draggedSeatIndex = actualIndex;
       div.classList.add("dragging");
     });
-
     div.addEventListener("dragend", () => {
       draggedSeatIndex = null;
       div.classList.remove("dragging");
     });
-
-    div.addEventListener("dragover", (event) => event.preventDefault());
-
+    div.addEventListener("dragover", event => event.preventDefault());
     div.addEventListener("drop", () => {
       if (draggedSeatIndex === null) return;
       const targetIndex = Number(div.dataset.index);
       [currentSeats[draggedSeatIndex], currentSeats[targetIndex]] = [currentSeats[targetIndex], currentSeats[draggedSeatIndex]];
       currentClass().currentSeats = currentSeats;
+      currentClass().updatedAtText = "今";
       saveState();
       renderSeats(rows, cols);
       showWarnings(countProblems(currentSeats, rows, cols));
@@ -639,29 +782,49 @@ function renderSeats(rows = Number($("seatRows").value), cols = Number($("seatCo
 }
 
 function createClass() {
+  const year = $("newClassYear").value.trim() || state.currentYear || "2026";
   const name = $("newClassName").value.trim();
   const students = $("newClassStudents").value.split("\n").map(s => s.trim()).filter(Boolean);
 
   if (!name || students.length === 0) return alert("クラス名と名簿を入力してください。");
+  if (!state.years.includes(year)) state.years.push(year);
 
-  const cls = { id: uid(), name, students, genders: {}, ngPairs: [], careMemos: {}, lastSeats: [], currentSeats: [] };
+  const cls = {
+    id: uid(),
+    year,
+    name,
+    students,
+    genders: {},
+    ngPairs: [],
+    careMemos: {},
+    lastSeats: [],
+    currentSeats: [],
+    updatedAtText: "今"
+  };
+
   state.classes.push(cls);
+  state.currentYear = year;
   state.currentClassId = cls.id;
+  currentSeats = [];
   saveState();
 
+  $("newClassYear").value = "";
   $("newClassName").value = "";
   $("newClassStudents").value = "";
   $("classModal").classList.add("hidden");
 
   renderAll();
-  setView("settingsView");
+  setView("classView");
 }
 
 function deleteCurrentClass() {
   if (state.classes.length <= 1) return alert("クラスは最低1つ必要です。");
   if (!confirm("現在のクラスを削除しますか？")) return;
   state.classes = state.classes.filter(c => c.id !== state.currentClassId);
-  state.currentClassId = state.classes[0].id;
+  const first = classesForCurrentYear()[0] || state.classes[0];
+  state.currentClassId = first.id;
+  state.currentYear = first.year;
+  currentSeats = first.currentSeats || [];
   saveState();
   renderAll();
   setView("dashboardView");
@@ -671,11 +834,11 @@ function updateClassInfo() {
   const cls = currentClass();
   const name = $("classNameInput").value.trim();
   const students = $("studentInput").value.split("\n").map(s => s.trim()).filter(Boolean);
-
   if (!name || students.length === 0) return alert("クラス名と名簿を入力してください。");
 
   cls.name = name;
   cls.students = students;
+  cls.updatedAtText = "今";
   cls.genders = cls.genders || {};
   cls.careMemos = cls.careMemos || {};
   cls.ngPairs = (cls.ngPairs || []).filter(pair => students.includes(pair[0]) && students.includes(pair[1]));
@@ -688,6 +851,29 @@ function updateClassInfo() {
   alert("更新しました。");
 }
 
+function duplicateClass() {
+  const cls = currentClass();
+  const copy = JSON.parse(JSON.stringify(cls));
+  copy.id = uid();
+  copy.name = `${cls.name} コピー`;
+  copy.updatedAtText = "今";
+  state.classes.push(copy);
+  state.currentClassId = copy.id;
+  currentSeats = copy.currentSeats || [];
+  saveState();
+  renderAll();
+}
+
+function addYear() {
+  const y = $("yearInput").value.trim();
+  if (!y) return alert("年度を入力してください。");
+  if (!state.years.includes(y)) state.years.push(y);
+  state.currentYear = y;
+  $("yearInput").value = "";
+  saveState();
+  renderAll();
+}
+
 function saveGenders() {
   const cls = currentClass();
   document.querySelectorAll("[data-gender-name]").forEach(select => {
@@ -696,6 +882,7 @@ function saveGenders() {
     if (value) cls.genders[name] = value;
     else delete cls.genders[name];
   });
+  cls.updatedAtText = "今";
   saveState();
   renderAll();
   alert("性別設定を保存しました。");
@@ -704,16 +891,26 @@ function saveGenders() {
 function addNgPair() {
   const a = $("ngStudentA").value;
   const b = $("ngStudentB").value;
-
   if (!a || !b || a === b) return alert("異なる2名を選んでください。");
 
   const cls = currentClass();
   const exists = cls.ngPairs.some(pair => (pair[0] === a && pair[1] === b) || (pair[0] === b && pair[1] === a));
   if (exists) return alert("このNGペアはすでに登録されています。");
-
   cls.ngPairs.push([a, b]);
+  cls.updatedAtText = "今";
   saveState();
-  renderNgPairs();
+  renderAll();
+}
+
+function addCareMemo() {
+  const student = $("careStudentSelect").value;
+  const memo = $("careMemoInput").value.trim();
+  if (!student || !memo) return alert("生徒名とメモを入力してください。");
+  currentClass().careMemos[student] = memo;
+  currentClass().updatedAtText = "今";
+  $("careMemoInput").value = "";
+  saveState();
+  renderAll();
 }
 
 function makeGroups() {
@@ -735,6 +932,91 @@ async function copyOrder() {
   alert("コピーしました。");
 }
 
+function getPickerCandidates() {
+  const cls = currentClass();
+  let students = [...cls.students];
+  const genderFilter = $("pickerGenderFilter").value;
+  const history = classPickerHistory(cls).map(h => h.name);
+  const absent = classAbsentList(cls);
+
+  if (genderFilter !== "all") {
+    students = students.filter(name => cls.genders[name] === genderFilter);
+  }
+  if ($("excludePickedCheck").checked) {
+    students = students.filter(name => !history.includes(name));
+  }
+  if ($("skipAbsentCheck").checked) {
+    students = students.filter(name => !absent.includes(name));
+  }
+
+  return students;
+}
+
+function pickStudent() {
+  const cls = currentClass();
+  let candidates = getPickerCandidates();
+
+  if (!candidates.length && $("excludePickedCheck").checked) {
+    if (confirm("対象者がいません。指名履歴をリセットして選び直しますか？")) {
+      state.picker.historyByClass[cls.id] = [];
+      candidates = getPickerCandidates();
+    }
+  }
+
+  if (!candidates.length) return alert("指名できる生徒がいません。設定を確認してください。");
+
+  const name = candidates[Math.floor(Math.random() * candidates.length)];
+  const record = {
+    name,
+    number: studentNumber(name),
+    time: new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })
+  };
+  classPickerHistory(cls).unshift(record);
+  cls.updatedAtText = "今";
+
+  $("pickedStudent").textContent = name;
+  $("pickedMeta").textContent = `${record.number}番 / ${record.time}`;
+  saveState();
+  renderPickerHistory();
+}
+
+function resetPicker() {
+  if (!confirm("このクラスの指名履歴をリセットしますか？")) return;
+  state.picker.historyByClass[currentClass().id] = [];
+  $("pickedStudent").textContent = "?";
+  $("pickedMeta").textContent = "履歴をリセットしました";
+  saveState();
+  renderPickerHistory();
+}
+
+function renderPickerHistory() {
+  const history = classPickerHistory();
+  $("pickerHistory").innerHTML = history.length
+    ? history.map(h => `<span class="history-chip">${h.number}番 ${h.name} <small>${h.time}</small></span>`).join("")
+    : `<p class="muted">まだ指名履歴はありません。</p>`;
+}
+
+function renderAbsentList() {
+  const cls = currentClass();
+  const absent = classAbsentList(cls);
+  $("absentList").innerHTML = cls.students.map(name => `
+    <div class="absent-row">
+      <span>${studentNumber(name)}. ${name}</span>
+      <label><input type="checkbox" data-absent-name="${name}" ${absent.includes(name) ? "checked" : ""}> 除外</label>
+    </div>
+  `).join("");
+
+  document.querySelectorAll("[data-absent-name]").forEach(check => {
+    check.addEventListener("change", () => {
+      const list = classAbsentList(cls);
+      const name = check.dataset.absentName;
+      if (check.checked && !list.includes(name)) list.push(name);
+      if (!check.checked) state.picker.absentByClass[cls.id] = list.filter(n => n !== name);
+      saveState();
+    });
+  });
+}
+
 let timer = null;
 let remainingSeconds = 300;
 function updateTimerFromInput() { remainingSeconds = Number($("timerMinutes").value) * 60 + Number($("timerSeconds").value); }
@@ -754,46 +1036,6 @@ function startTimer() {
 }
 function pauseTimer() { clearInterval(timer); timer = null; }
 function resetTimer() { pauseTimer(); updateTimerFromInput(); renderTimer(); }
-
-function makeReport() {
-  const k = $("reportKeywords").value.trim() || "授業に前向きに取り組み、友人の意見にも耳を傾ける姿";
-  $("reportResult").textContent = `${k}が見られました。特に、活動の中で自分の考えを大切にしながら、周囲と協力して学ぼうとする姿勢が印象的でした。今後は、学んだことをさらに自分の言葉で表現し、日常生活の中でも生かしていくことを期待しています。`;
-}
-
-function makeNewsletter() {
-  const topic = $("newsletterTopic").value.trim() || "今週の学び";
-  $("newsletterResult").textContent = `【今週の学級通信】
-
-今週の学級では、${topic}
-
-子どもたちは活動を通して、自分の考えを言葉にすること、そして友人の考えを大切に聴くことに取り組みました。これからも、安心して学び合える学級づくりを大切にしていきます。`;
-}
-
-function makeLesson() {
-  const subject = $("lessonSubject").value.trim() || "授業";
-  const theme = $("lessonTheme").value.trim() || "テーマ";
-  $("lessonResult").textContent = `【${subject}：${theme}の授業案】
-
-1. 導入：問いを提示する「${theme}とは何か？」
-2. 個人思考：自分の経験や考えを書く
-3. ペア共有：相手の考えを傾聴する
-4. 全体共有：多様な考えを板書する
-5. まとめ：今日の気づきと明日からの行動を書く`;
-}
-
-function makeMail() {
-  const topic = $("mailTopic").value.trim() || "学校での様子について共有したいこと";
-  $("mailResult").textContent = `件名：学校でのご様子について
-
-保護者様
-
-いつもお世話になっております。
-本日は、${topic} についてご連絡いたしました。
-
-学校でも引き続き様子を見ながら支援してまいりますので、ご家庭でも可能な範囲でお声がけいただけますと幸いです。
-
-どうぞよろしくお願いいたします。`;
-}
 
 function bindEvents() {
   document.querySelectorAll(".nav-item").forEach(button => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -831,34 +1073,67 @@ function bindEvents() {
     applyPrintSettings();
   });
 
-  $("openClassModalBtn").addEventListener("click", () => $("classModal").classList.remove("hidden"));
-  $("quickStartBtn").addEventListener("click", () => $("classModal").classList.remove("hidden"));
-  $("closeClassModalBtn").addEventListener("click", () => $("classModal").classList.add("hidden"));
-  $("createClassBtn").addEventListener("click", createClass);
-
-  $("classSelect").addEventListener("change", () => {
-    state.currentClassId = $("classSelect").value;
-    saveState();
+  $("schoolYearSelect").addEventListener("change", () => {
+    state.currentYear = $("schoolYearSelect").value;
+    const first = classesForCurrentYear()[0];
+    if (first) state.currentClassId = first.id;
     currentSeats = currentClass().currentSeats || [];
+    saveState();
     renderAll();
   });
 
-  $("saveAllBtn").addEventListener("click", async () => {
+  $("classSelect").addEventListener("change", () => {
+    state.currentClassId = $("classSelect").value;
+    currentSeats = currentClass().currentSeats || [];
     saveState();
-    if (!currentUser) {
-      alert("この端末には一時保存しました。クラウド保存にはGoogleログインが必要です。");
-      return;
-    }
-    try {
-      await saveToCloud();
-    } catch (error) {
-      console.error(error);
-      alert("クラウド保存に失敗しました。FirestoreのRulesやAuthentication設定を確認してください。");
-    }
+    renderAll();
   });
 
+  $("dashboardClassSearch").addEventListener("input", e => renderClassCards(e.target.value));
+  $("classSearchInput").addEventListener("input", renderClassSearch);
+
+  $("openClassModalBtn").addEventListener("click", () => {
+    $("newClassYear").value = state.currentYear || "2026";
+    $("classModal").classList.remove("hidden");
+  });
+  $("quickStartBtn").addEventListener("click", () => {
+    $("newClassYear").value = state.currentYear || "2026";
+    $("classModal").classList.remove("hidden");
+  });
+  $("closeClassModalBtn").addEventListener("click", () => $("classModal").classList.add("hidden"));
+  $("createClassBtn").addEventListener("click", createClass);
+
+  $("saveAllBtn").addEventListener("click", () => {
+    saveState({ cloud: false });
+    alert("この端末に保存しました。");
+  });
+  $("manualCloudSaveBtn").addEventListener("click", async () => {
+    saveState({ cloud: false });
+    if (!currentUser) return alert("クラウド保存にはGoogleログインが必要です。");
+    try {
+      await saveToCloud();
+      alert("クラウド保存しました。");
+    } catch (error) {
+      console.error(error);
+      updateSaveStatus("クラウド保存に失敗しました", "error");
+      alert("クラウド保存に失敗しました。");
+    }
+  });
+  $("manualCloudLoadBtn").addEventListener("click", async () => {
+    if (!currentUser) return alert("クラウド読込にはGoogleログインが必要です。");
+    const loaded = await loadFromCloud();
+    alert(loaded ? "クラウドから読み込みました。" : "クラウド保存データはまだありません。");
+  });
   $("loginBtn").addEventListener("click", loginWithGoogle);
   $("logoutBtn").addEventListener("click", logoutGoogle);
+
+  $("addYearBtn").addEventListener("click", addYear);
+  $("updateClassBtn").addEventListener("click", updateClassInfo);
+  $("duplicateClassBtn").addEventListener("click", duplicateClass);
+  $("deleteClassBtn").addEventListener("click", deleteCurrentClass);
+  $("saveGenderBtn").addEventListener("click", saveGenders);
+  $("addNgPairBtn").addEventListener("click", addNgPair);
+  $("addCareMemoBtn").addEventListener("click", addCareMemo);
 
   $("generateSeatsBtn").addEventListener("click", () => createSeats("random"));
   $("balancedSeatsBtn").addEventListener("click", () => createSeats("balanced"));
@@ -868,24 +1143,15 @@ function bindEvents() {
   $("genderHorizontalBtn").addEventListener("click", () => createSeats("genderHorizontal"));
   $("printSeatBtn").addEventListener("click", () => window.print());
 
-  $("updateClassBtn").addEventListener("click", updateClassInfo);
-  $("deleteClassBtn").addEventListener("click", deleteCurrentClass);
-  $("saveGenderBtn").addEventListener("click", saveGenders);
-  $("addNgPairBtn").addEventListener("click", addNgPair);
-
-  $("addCareMemoBtn").addEventListener("click", () => {
-    const student = $("careStudentSelect").value;
-    const memo = $("careMemoInput").value.trim();
-    if (!student || !memo) return alert("生徒名とメモを入力してください。");
-    currentClass().careMemos[student] = memo;
-    $("careMemoInput").value = "";
-    saveState();
-    renderCareMemos();
-  });
-
   $("makeGroupsBtn").addEventListener("click", makeGroups);
   $("makeOrderBtn").addEventListener("click", makeOrder);
   $("copyOrderBtn").addEventListener("click", copyOrder);
+
+  $("pickStudentBtn").addEventListener("click", pickStudent);
+  $("resetPickerBtn").addEventListener("click", resetPicker);
+  $("pickerGenderFilter").addEventListener("change", () => saveState());
+  $("excludePickedCheck").addEventListener("change", () => saveState());
+  $("skipAbsentCheck").addEventListener("change", () => saveState());
 
   $("startTimerBtn").addEventListener("click", startTimer);
   $("pauseTimerBtn").addEventListener("click", pauseTimer);
@@ -893,10 +1159,12 @@ function bindEvents() {
   $("timerMinutes").addEventListener("change", resetTimer);
   $("timerSeconds").addEventListener("change", resetTimer);
 
-  $("makeReportBtn").addEventListener("click", makeReport);
-  $("makeNewsletterBtn").addEventListener("click", makeNewsletter);
-  $("makeLessonBtn").addEventListener("click", makeLesson);
-  $("makeMailBtn").addEventListener("click", makeMail);
+  $("clearLocalBtn").addEventListener("click", () => {
+    if (!confirm("この端末の保存データを削除しますか？")) return;
+    localStorage.removeItem("laclass60LocalState");
+    localStorage.removeItem("laclass40LocalState");
+    location.reload();
+  });
 }
 
 loadState();
@@ -904,11 +1172,13 @@ currentSeats = currentClass().currentSeats || [];
 bindEvents();
 renderAll();
 updateLoginUI();
+updateSaveStatus(currentUser ? "ログイン中" : "未ログイン");
 resetTimer();
 
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   updateLoginUI();
+  updateSaveStatus(user ? "ログインしました" : "未ログイン");
   if (user) {
     try {
       await loadFromCloud();
@@ -920,5 +1190,6 @@ onAuthStateChanged(auth, async (user) => {
     currentSeats = currentClass().currentSeats || [];
     renderAll();
     updateLoginUI();
+    updateSaveStatus("未ログイン");
   }
 });
